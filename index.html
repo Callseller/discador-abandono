@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta charset="utf-8">
+<title>Discador de Abandono</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: controles; esteira (todos os leads da lista, da esquerda = acabou de abandonar, à direita = 1h30); agentes com as ligações de cada um; lead seguido; quem saiu */
+:root{
+  --bg:#f4f6f3; --panel:#ffffff; --line:#dfe5dc; --fg:#0e130e; --muted:#5d6a5c; --chip:#eef2ec;
+  --accent:#169c1d; --accent-soft:#e2f5e2; --glow:0 0 0 rgba(0,0,0,0);
+  --wait:#e3a61a; --lost:#c93a3a; --follow:#7b3fe4; --t-re:#4a86c5; --idle:#9aa59a; --z0:#eef0ee; --z1:#e6f4e6; --z2:#f6efe0; --z3:#f6e6e0;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#000000; --panel:#0b0f0b; --line:#1f291f; --fg:#eef3ee; --muted:#8e9c8d; --chip:#141a14;
+  --accent:#2cce1c; --accent-soft:#0f2a0e; --glow:0 0 16px rgba(44,206,28,.4); --idle:#5f6b5f;
+  --follow:#b08cff; --t-re:#6aa6e6; --z0:#0e110e; --z1:#0b1a0b; --z2:#1a150a; --z3:#1a0f0a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000000; --panel:#0b0f0b; --line:#1f291f; --fg:#eef3ee; --muted:#8e9c8d; --chip:#141a14;
+  --accent:#2cce1c; --accent-soft:#0f2a0e; --glow:0 0 16px rgba(44,206,28,.4); --idle:#5f6b5f;
+  --follow:#b08cff; --t-re:#6aa6e6; --z0:#0e110e; --z1:#0b1a0b; --z2:#1a150a; --z3:#1a0f0a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 40px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h3,h4{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.01em;line-height:1.02;margin:0}
+h1{font-size:clamp(30px,5vw,48px)} h3{font-size:19px} h4{font-size:15px}
+h1 em{font-style:normal;color:var(--accent);text-shadow:var(--glow)}
+p{margin:0;max-width:78ch}
+.small{font-size:12.5px;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.controls{flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.controls label,.ctl{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px}
+select{max-width:100%}
+select,button{font:inherit;font-size:14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:6px 11px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700;box-shadow:var(--glow);min-width:104px}
+button.sq{min-width:34px;padding:6px 0;font-weight:700}
+button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);font-weight:700}
+button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.seg{display:flex;gap:4px;flex-wrap:wrap}
+.clock{font-family:var(--display);font-weight:800;font-size:44px;line-height:1;margin-left:auto}
+.clock small{font-size:16px;color:var(--muted);margin-left:6px}
+.rules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.rule{background:var(--chip);border-radius:8px;padding:8px 10px;font-size:12.5px}
+.rule b{display:block;font-size:13.5px}
+.colhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+/* esteira */
+.belt{position:relative;height:196px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.zone{position:absolute;top:0;bottom:0;border-right:1px dashed var(--line)}
+.zone span{position:absolute;bottom:4px;left:6px;font-size:11.5px;color:var(--muted);font-weight:600;white-space:nowrap}
+.z0{left:0;width:6%;background:var(--z0)}.z1{left:6%;width:46%;background:var(--z1)}.z2{left:52%;width:22%;background:var(--z2)}.z3{left:74%;width:26%;background:var(--z3);border-right:0}
+.dot{position:absolute;width:13px;height:13px;margin-left:-6px;border-radius:50%;transition:left .25s linear;cursor:pointer;border:2px solid transparent}
+.dot.s-wait{background:var(--idle)}
+.dot.s-ready{background:var(--fg)}
+.dot.s-re{background:var(--t-re)}
+.dot.s-cool{background:transparent;border:2px dashed var(--idle)}
+.dot.s-ring{background:var(--wait);animation:pulse .8s ease-in-out infinite alternate}
+.dot.s-talk{background:var(--accent);box-shadow:var(--glow)}
+.dot.p{border-radius:3px}
+.dot.b{opacity:.35}
+.dot.f{outline:3px solid var(--follow);outline-offset:2px;z-index:2}
+@keyframes pulse{from{transform:scale(.85)}to{transform:scale(1.2)}}
+.axis{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);position:relative;height:16px}
+.axis span{position:absolute;transform:translateX(-50%)}
+.zc{display:grid;grid-template-columns:6fr 46fr 22fr 26fr;gap:0;font-size:12.5px}
+.zc div{padding:0 6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);align-items:center}
+.lg{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+/* empresas */
+.tw{overflow-x:auto}
+.emp{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}
+.emp th{font-size:12px;font-weight:600;color:var(--muted);text-align:right;padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.emp td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+.emp th:first-child,.emp td:first-child,.emp th:nth-child(2),.emp td:nth-child(2){text-align:left}
+.emp tr:last-child td{border-bottom:0}
+.emp th{white-space:normal;vertical-align:bottom}
+.emp .seg{flex-wrap:nowrap}
+.emp button{font-size:12.5px;padding:3px 8px}
+.emp button[data-m="2"][aria-pressed=true]{background:color-mix(in srgb,var(--lost) 16%,transparent);border-color:var(--lost)}
+.order{display:flex;flex-wrap:wrap;gap:6px}
+.order span{background:var(--chip);border-radius:8px;padding:5px 9px;font-size:12.5px}
+.order b{margin-right:4px}
+/* explicação para o dev */
+.devlink{color:var(--accent);font-weight:600}
+.spec{gap:12px;scroll-margin-top:12px}
+.spec code{overflow-wrap:anywhere}
+.spec h3{font-size:24px}
+.spec h4{font-size:17px;margin-top:8px}
+.spec ul,.spec ol{margin:0;padding-left:22px;max-width:78ch;display:flex;flex-direction:column;gap:4px}
+.spec table{border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.spec th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:4px 10px 4px 0;border-bottom:1px solid var(--line);vertical-align:bottom}
+.spec td{padding:4px 10px 4px 0;border-bottom:1px solid var(--line)}
+.spec tr:last-child td{border-bottom:0}
+/* agentes */
+.agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.ag{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12.5px;min-width:0}
+.ag .who{display:flex;justify-content:space-between;font-weight:700;font-size:12.5px}
+.ag .st{font-weight:600}
+.ag.dial{border-color:var(--wait);background:color-mix(in srgb,var(--wait) 9%,transparent)}
+.ag.talk{border-color:var(--accent);background:var(--accent-soft)}
+.ag.off{opacity:.45}
+.ag.sold{box-shadow:0 0 0 2px var(--accent)}
+.call{display:flex;justify-content:space-between;gap:6px;padding:3px 6px;border-radius:6px;background:var(--chip);cursor:pointer;white-space:nowrap}
+.call span{overflow:hidden;text-overflow:ellipsis}
+.call .tm{color:var(--wait);font-weight:700}
+.call.f,.ag.f{outline:2px solid var(--follow)}
+/* seguido */
+.follow{border-color:var(--follow);border-width:2px}
+.fhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.fhead h3{color:var(--follow)}
+.fnow{font-size:17px;font-weight:700}
+.trail{display:flex;flex-wrap:wrap;gap:6px}
+.step{display:flex;flex-direction:column;gap:1px;padding:6px 9px;border-radius:8px;background:var(--chip);font-size:12.5px}
+.step time{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.step.g{background:var(--accent-soft);font-weight:600}
+.step.r{border:1px solid var(--lost)}
+.step.n{border:1px dashed var(--line);background:transparent}
+.outs{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+.out{display:flex;flex-direction:column;gap:2px}
+.out b{font-family:var(--display);font-size:32px;font-weight:800;line-height:1}
+.out span{font-size:12px;color:var(--muted);line-height:1.3}
+.out.good b{color:var(--accent);text-shadow:var(--glow)}
+.out.bad b{color:var(--lost)}
+.lower{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px}
+.log{display:flex;flex-direction:column;gap:3px;font-size:12.5px;max-height:200px;overflow:hidden}
+.log div{display:flex;gap:8px}
+.log time{color:var(--muted);font-variant-numeric:tabular-nums;min-width:58px}
+.log .g{color:var(--accent);font-weight:600}
+.log .r{color:var(--lost);font-weight:600}
+@media (max-width:900px){.rules{grid-template-columns:1fr 1fr}.outs{grid-template-columns:repeat(3,minmax(0,1fr))}.lower{grid-template-columns:1fr}}
+@media (max-width:560px){.outs{grid-template-columns:1fr 1fr}.clock{margin-left:0}.zone span{font-size:10px}}
+@media (prefers-reduced-motion:reduce){.dot{transition:none}.dot.s-ring{animation:none}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header style="display:flex;flex-direction:column;gap:8px">
+  <h1>Discador de <em>abandono</em> · dia 02/11</h1>
+  <p class="small">Os 3.771 leads de abandono de carrinho que entraram em 02/11/2026, por minuto de entrada (o segundo é sorteado). Nomes de empresas trocados por letras, e todas usam a mesma conversão. Os agentes dão Play e o discador liga sozinho. Tempos de ligação e chance de atender e de vender são os reais da CallSeller (VoIP, abandono, outubro).</p>
+  <p><a href="#dev" class="devlink">Explicação para o dev: regras e pontos em aberto ↓</a></p>
+</header>
+
+<div class="box controls">
+  <label for="hour">Agentes dão Play às <select id="hour"></select></label>
+  <span class="ctl">Agentes na campanha <button type="button" class="sq" id="agMinus" aria-label="Tirar um agente">−</button><b class="num" id="agVal" style="min-width:2ch;text-align:center">5</b><button type="button" class="sq" id="agPlus" aria-label="Colocar mais um agente">+</button></span>
+  <span class="ctl">Leads por agente <span class="seg" id="perSeg" role="group" aria-label="Leads discados por agente"></span></span>
+  <span class="ctl">Religar entre 2 e 5 min</span>
+  <button type="button" class="primary" id="play">▶ Rodar</button>
+  <span class="seg" role="group" aria-label="Velocidade" id="speeds"><button type="button" data-s="1" aria-pressed="false">1×</button><button type="button" data-s="5" aria-pressed="true">5×</button><button type="button" data-s="20" aria-pressed="false">20×</button><button type="button" data-s="60" aria-pressed="false">60×</button></span>
+  <div class="clock num" id="clock">10:00<small>02/11</small></div>
+</div>
+
+<div class="rules">
+  <div class="rule"><b>1. Agente deu Play</b>O discador liga na hora para os <span class="perTxt">3</span> leads mais quentes (os que abandonaram mais recente).</div>
+  <div class="rule"><b>2. Um atendeu</b>Cai para esse agente. Se outro atender junto, vai para outro agente livre. Se não tiver, o cliente fica no vácuo.</div>
+  <div class="rule"><b>3. Ninguém atendeu</b>O agente já recebe mais <span class="perTxt">3</span>. Quem não atendeu pode ser religado entre 2 e 5 min. Lead novo, que nunca recebeu ligação, passa na frente da religação da mesma marca.</div>
+  <div class="rule"><b>4. Faixas (sem nenhuma Preferência)</b>1º: de 1 a 25 min de abandono, liga para todos. 2º: de 25 a 50 min, só se não tiver ninguém para ligar na 1ª. 3º: de 50 min a 1h30, só se não tiver nas duas primeiras. Passou de 1h30, sai.</div>
+</div>
+
+<div class="box">
+  <div class="colhead"><h3>Marca de cada empresa</h3><button type="button" id="clearMarks">Voltar todas para Normal</button></div>
+  <span class="small">Todas começam em Normal. Pode trocar a qualquer hora, com o discador rodando, e vale na próxima ligação.</span>
+  <div class="order"><span><b>1º</b>Até 25 min: novo de Preferência, novo de Normal, religar Preferência</span><span><b>2º</b>25 a 50 min: a mesma ordem</span><span><b>3º</b>Religar Normal até 50 min</span><span><b>4º</b>50 min a 1h30: novos, depois religações, com Preferência na frente</span><span><b>Por último</b>Ruim: só se não houver mais ninguém. 1 ligação, lead de até 25 min, sem religar</span></div>
+  <div class="tw"><table class="emp"><thead><tr><th>Empresa</th><th>Marca</th><th>Leads desde o Play</th><th>Ligações</th><th>Compraram</th><th>Nunca ligados</th></tr></thead><tbody id="empBody"></tbody></table></div>
+  <span class="small" id="empSum"></span>
+</div>
+
+<div class="box">
+  <div class="colhead"><h3>A lista do discador agora</h3><span class="small" id="beltCount"></span></div>
+  <span class="small">Cada bolinha é um lead. Ele entra na esquerda quando abandona o carrinho e anda para a direita conforme o tempo passa. Clique numa bolinha para seguir o lead.</span>
+  <div class="belt" id="belt">
+    <div class="zone z0"><span>espera</span></div>
+    <div class="zone z1"><span>1º · 1 a 25 min · liga para todos</span></div>
+    <div class="zone z2"><span>2º · 25 a 50 min</span></div>
+    <div class="zone z3"><span>3º · 50 min a 1h30</span></div>
+  </div>
+  <div class="axis" id="axis"></div>
+  <div class="zc num"><div id="zc0"></div><div id="zc1"></div><div id="zc2"></div><div id="zc3"></div></div>
+  <div class="legend"><span><i class="lg" style="background:var(--idle)"></i>ainda não completou 1 min</span><span><i class="lg" style="background:var(--fg)"></i>novo, nunca ligado</span><span><i class="lg" style="background:var(--wait)"></i>tocando</span><span><i class="lg" style="border:2px dashed var(--idle)"></i>não atendeu, ainda não deu 2 min</span><span><i class="lg" style="background:var(--t-re)"></i>pronto para religar</span><span><i class="lg" style="background:var(--accent)"></i>falando com agente</span><span><i class="lg" style="outline:3px solid var(--follow);outline-offset:1px"></i>lead que você está seguindo</span><span><i class="lg" style="background:var(--fg);border-radius:3px"></i>quadrado: empresa em Preferência</span><span><i class="lg" style="background:var(--fg);opacity:.35"></i>apagado: empresa Ruim</span></div>
+</div>
+
+<div class="box follow">
+  <div class="fhead"><h3 id="fName">Seguindo o próximo lead que entrar</h3><span class="fnow" id="fNow"></span><button type="button" id="fNext" style="margin-left:auto">Seguir o próximo lead novo</button></div>
+  <div class="trail" id="fTrail"></div>
+</div>
+
+<div class="box">
+  <div class="colhead"><h3>Agentes</h3><span class="small" id="agCount"></span></div>
+  <div class="agents" id="agents"></div>
+</div>
+
+<div class="box">
+  <div class="colhead"><h3>Resultado desde o Play</h3><span class="small" id="since"></span></div>
+  <div class="outs">
+    <div class="out good"><b class="num" id="oSale">0</b><span>atenderam e compraram</span></div>
+    <div class="out"><b class="num" id="oTalk">0</b><span>atenderam e não compraram</span></div>
+    <div class="out bad"><b class="num" id="oOld">0</b><span>passaram de 1h30 sem atender</span></div>
+    <div class="out bad"><b class="num" id="oNever">0</b><span>desses, nunca receberam ligação</span></div>
+    <div class="out bad"><b class="num" id="oLost">0</b><span>atenderam e não tinha agente livre</span></div>
+    <div class="out"><b class="num" id="oFirst">–</b><span>tempo médio do abandono até a 1ª ligação</span></div>
+    <div class="out"><b class="num" id="oRe">–</b><span>religações feitas em até 5 min</span></div>
+  </div>
+</div>
+
+<section class="box spec" id="dev">
+  <h3>Explicação para o dev</h3>
+  <p>Regras do discador automático VoIP, só para abandono de carrinho. <b>Ainda não é a versão final:</b> os pontos em aberto estão no fim. O código da regra está nesta página, na classe <code>Sim</code>, método <code>pick()</code>.</p>
+
+  <h4>Regras gerais</h4>
+  <ul>
+    <li>Não tem horário de expediente: o agente dá Play e fica disponível.</li>
+    <li>Agente livre e sem ligação tocando da leva dele recebe N leads de uma vez. N vai de 1 a 5, configurável (o simulador usa 3).</li>
+    <li>O lead entra na lista com 1 min de abandono e sai com 1h30.</li>
+    <li>Religar: o lead fica pronto 2 min depois da última tentativa. Os 5 min são meta, não limite: a religação não fura lead novo da mesma faixa.</li>
+    <li>Atendeu: vai para o agente da leva. Se ele estiver ocupado, vai para outro agente livre.</li>
+    <li>Atendeu e não tem agente livre: conta como tentativa e o lead volta para a lista.</li>
+    <li>Conversou com o agente, comprando ou não: o lead sai da lista.</li>
+  </ul>
+
+  <h4>Marca por empresa</h4>
+  <ul>
+    <li>Toda empresa começa em <b>Normal</b>. Pode ser marcada como <b>Preferência</b> (várias ao mesmo tempo) ou <b>Ruim</b>.</li>
+    <li>A troca vale na próxima ligação, sem parar o discador.</li>
+    <li><b>Ruim:</b> 1 ligação no máximo, só lead de até 25 min, só se não houver mais ninguém, e sem religar.</li>
+  </ul>
+
+  <h4>Ordem de escolha do próximo lead</h4>
+  <p>Vai descendo e usa o primeiro lead que achar. "Novo" é quem nunca recebeu ligação, do mais recente para o mais antigo. "Religar" é quem já está pronto, primeiro quem espera há mais tempo. Lead tocando ou falando não entra.</p>
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Com alguma empresa em Preferência</th><th>Sem nenhuma Preferência</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Novo de Preferência, 1–25 min</td><td>Novo, 1–25 min</td></tr>
+      <tr><td>2</td><td>Novo de Normal, 1–25 min</td><td>Religar, 1–25 min</td></tr>
+      <tr><td>3</td><td>Religar Preferência, 1–25 min</td><td>Novo, 25–50 min</td></tr>
+      <tr><td>4</td><td>Novo de Preferência, 25–50 min</td><td>Religar, 25–50 min</td></tr>
+      <tr><td>5</td><td>Novo de Normal, 25–50 min</td><td>Novo, 50 min–1h30</td></tr>
+      <tr><td>6</td><td>Religar Preferência, 25–50 min</td><td>Religar, 50 min–1h30</td></tr>
+      <tr><td>7</td><td>Religar Normal, 1–25 min</td><td>Ruim: novo, 1–25 min</td></tr>
+      <tr><td>8</td><td>Religar Normal, 25–50 min</td><td></td></tr>
+      <tr><td>9</td><td>Novo de Preferência, 50 min–1h30</td><td></td></tr>
+      <tr><td>10</td><td>Novo de Normal, 50 min–1h30</td><td></td></tr>
+      <tr><td>11</td><td>Religar Preferência, 50 min–1h30</td><td></td></tr>
+      <tr><td>12</td><td>Religar Normal, 50 min–1h30</td><td></td></tr>
+      <tr><td>13</td><td>Ruim: novo, 1–25 min</td><td></td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>O que o teste mostrou</h4>
+  <p>Duas empresas em Preferência (Empresa B, a de muitos leads, e Empresa I, a de poucos), 3 leads por agente, 02/11 das 10h às 22h, média de 20 rodadas. As vendas são estimativa do simulador:</p>
+  <div class="tw"><table>
+    <thead><tr><th>Agentes</th><th>Vendas Preferência (sem → com marca)</th><th>Vendas outras (sem → com marca)</th><th>Total (sem → com marca)</th></tr></thead>
+    <tbody><tr><td>6</td><td>26 → 39</td><td>55 → 43</td><td>81 → 82</td></tr><tr><td>8</td><td>32 → 52</td><td>75 → 55</td><td>106 → 107</td></tr><tr><td>10</td><td>40 → 55</td><td>86 → 67</td><td>125 → 123</td></tr></tbody>
+  </table></div>
+  <p>A marca muda de qual empresa vêm as vendas, e o total quase não muda.</p>
+
+  <h4>Em aberto</h4>
+  <ul>
+    <li><b>Leads por agente:</b> com 3, de 80 a 100 clientes por dia atendem sem agente livre (6 a 10 agentes). Com 2, de 24 a 39, com menos vendas. Com 1, nenhum, com menos vendas ainda. Falta decidir.</li>
+    <li><b>Dados:</b> só um dia de leads, e feriado (Finados).</li>
+    <li><b>Definido no simulador, sem decisão de negócio ainda:</b> a ordem das religações; quando um lead atende, as outras ligações da leva continuam tocando; e "atendeu sem agente" conta como tentativa.</li>
+  </ul>
+
+  <h4>O que o simulador não cobre</h4>
+  <ul>
+    <li>Cliente que atendeu sem agente é religado com a chance normal, o que provavelmente é otimista.</li>
+    <li>Não entram limite de linhas, de operadora ou de chamadas por número, lead com mais de um telefone, nem o mesmo cliente em dois carrinhos.</li>
+  </ul>
+</section>
+
+<div class="lower">
+  <div class="box"><h3>O que acabou de acontecer</h3><div class="log" id="log"></div></div>
+  <div class="box"><h3>Como ler</h3><p class="small">Entradas de leads: reais, de 02/11/2026. Tempos médios reais: sem atender 24 s, atende em 13 s, conversa sem venda 3 min 25 s, com venda 7 min 48 s, mais 38 s para marcar o resultado. A chance de atender e de vender muda com o tempo de abandono e com o número da tentativa, como foi em outubro. Cada atendimento e cada venda são sorteados por essa chance, então números próximos aparecem de um jeito um pouco diferente a cada rodada. Os agentes ficam na campanha o tempo todo depois do Play, sem horário de expediente.</p></div>
+</div>
+</div>
+
+<script>
+const D = {"e":[{"n":"Empresa A","t":null,"f":1},{"n":"Empresa B","t":null,"f":1},{"n":"Empresa C","t":null,"f":1},{"n":"Empresa D","t":null,"f":1},{"n":"Empresa E","t":null,"f":1},{"n":"Empresa F","t":null,"f":1},{"n":"Empresa G","t":null,"f":1},{"n":"Empresa H","t":null,"f":1},{"n":"Empresa I","t":null,"f":1},{"n":"Empresa J","t":null,"f":1},{"n":"Empresa K","t":null,"f":1},{"n":"Empresa L","t":null,"f":1},{"n":"Empresa M","t":null,"f":1},{"n":"Outras","t":null,"f":1}],"l":[[0,2],[0,2],[1,0],[1,0],[1,1],[2,2],[2,3],[2,5],[4,4],[4,11],[5,1],[5,1],[5,4],[6,5],[7,1],[7,4],[8,2],[8,4],[9,0],[9,1],[9,4],[10,5],[11,1],[11,9],[13,1],[13,2],[13,11],[14,0],[14,2],[14,4],[15,0],[15,1],[15,4],[16,0],[16,0],[17,0],[17,1],[17,1],[17,1],[17,1],[17,5],[19,2],[20,1],[20,5],[21,0],[21,0],[21,1],[23,0],[25,1],[25,1],[26,4],[26,4],[26,7],[27,0],[27,2],[28,0],[28,0],[28,0],[28,2],[31,2],[31,6],[32,4],[32,5],[33,0],[33,1],[33,4],[34,0],[35,0],[36,2],[36,6],[37,1],[38,1],[38,4],[39,0],[40,1],[42,1],[43,0],[43,4],[44,0],[44,2],[45,0],[46,2],[46,3],[47,1],[47,11],[49,0],[53,0],[54,2],[54,3],[55,2],[55,4],[55,6],[56,0],[56,1],[56,1],[56,5],[57,0],[57,0],[57,5],[58,0],[58,4],[59,1],[60,0],[60,0],[60,1],[61,10],[62,4],[64,0],[65,4],[66,1],[67,1],[67,2],[67,4],[68,5],[71,2],[72,1],[72,3],[73,0],[73,0],[74,5],[76,0],[76,3],[77,0],[77,3],[79,4],[80,6],[83,0],[84,1],[84,2],[85,5],[86,3],[89,1],[90,1],[90,2],[92,0],[97,1],[97,2],[97,6],[98,3],[99,0],[99,1],[106,3],[107,0],[107,1],[109,0],[110,0],[110,1],[111,0],[112,1],[116,2],[117,2],[121,0],[121,5],[122,2],[123,2],[123,2],[128,1],[129,4],[130,0],[132,5],[134,7],[135,1],[135,1],[138,1],[138,5],[142,1],[142,1],[145,0],[145,1],[150,2],[152,0],[153,1],[156,0],[156,1],[158,2],[166,1],[166,1],[169,1],[169,1],[170,2],[171,2],[174,5],[177,2],[181,1],[182,5],[185,4],[186,7],[188,3],[188,12],[189,3],[190,0],[190,6],[192,0],[193,4],[194,0],[194,1],[195,2],[200,0],[200,7],[205,0],[207,2],[208,0],[213,0],[217,0],[217,2],[219,0],[225,0],[225,3],[230,0],[231,0],[231,4],[235,3],[247,0],[249,0],[250,0],[250,4],[254,4],[255,4],[258,4],[258,4],[269,0],[269,2],[269,4],[273,3],[280,0],[287,0],[287,0],[287,4],[292,2],[294,2],[294,4],[295,0],[304,2],[310,5],[312,5],[312,6],[314,4],[315,0],[319,3],[320,0],[320,0],[320,1],[323,0],[325,3],[325,4],[327,2],[328,0],[330,0],[331,0],[331,0],[332,0],[335,0],[335,0],[335,0],[337,0],[337,0],[339,0],[339,4],[342,5],[343,0],[344,2],[345,2],[346,0],[348,2],[351,1],[351,7],[352,1],[353,0],[353,2],[355,0],[357,1],[358,3],[359,2],[360,0],[360,0],[362,0],[362,0],[363,1],[363,11],[365,0],[365,6],[366,0],[366,2],[366,6],[367,2],[369,0],[370,0],[370,0],[371,0],[372,0],[372,1],[372,6],[373,0],[374,0],[375,0],[375,0],[375,4],[375,10],[376,1],[376,2],[377,0],[377,2],[378,0],[379,0],[380,2],[380,3],[381,6],[382,0],[382,2],[383,0],[384,0],[385,2],[385,12],[386,0],[386,1],[388,0],[388,6],[389,0],[389,0],[389,2],[390,1],[390,2],[390,5],[390,6],[394,6],[395,1],[395,3],[398,1],[398,2],[399,0],[399,0],[399,4],[400,4],[400,6],[401,6],[402,0],[402,1],[403,2],[404,0],[404,3],[406,12],[407,0],[407,0],[407,2],[408,0],[408,0],[410,1],[410,2],[410,2],[411,1],[412,0],[412,0],[412,2],[412,7],[413,0],[414,0],[414,5],[415,0],[415,0],[415,2],[416,0],[417,4],[418,0],[418,0],[418,0],[418,3],[418,7],[419,2],[419,13],[420,5],[421,1],[421,4],[422,0],[422,0],[422,4],[423,2],[424,1],[424,3],[424,12],[425,0],[425,2],[425,2],[425,12],[426,0],[426,0],[426,0],[426,0],[426,1],[427,3],[427,4],[428,0],[429,1],[429,2],[429,2],[429,4],[429,5],[431,0],[431,1],[431,7],[432,0],[432,0],[432,1],[432,2],[432,2],[433,2],[433,2],[434,0],[434,6],[436,0],[436,0],[436,12],[437,0],[437,0],[437,0],[437,1],[437,2],[437,2],[437,4],[438,0],[438,0],[438,5],[439,0],[439,0],[439,0],[439,10],[440,0],[441,4],[441,4],[441,11],[442,1],[442,2],[442,5],[442,6],[443,0],[445,5],[445,7],[446,9],[447,1],[447,4],[449,0],[449,1],[449,1],[449,5],[450,0],[451,0],[451,0],[451,1],[451,3],[451,4],[452,1],[453,0],[453,0],[453,2],[454,1],[454,3],[455,0],[455,0],[455,1],[456,0],[456,1],[456,3],[458,2],[458,5],[458,6],[459,0],[459,11],[460,0],[460,1],[460,1],[460,4],[461,0],[461,10],[462,3],[463,1],[463,2],[464,1],[465,0],[465,0],[465,0],[465,4],[466,0],[467,4],[468,0],[468,0],[468,0],[468,4],[469,6],[469,7],[470,0],[470,2],[470,3],[471,2],[471,6],[472,0],[472,1],[473,1],[474,0],[474,1],[474,2],[474,2],[474,3],[476,0],[477,0],[477,0],[477,0],[477,2],[477,4],[477,5],[478,0],[478,4],[478,5],[478,7],[479,0],[479,0],[479,0],[479,4],[480,5],[481,0],[481,0],[481,1],[481,2],[482,0],[483,0],[483,2],[484,0],[484,0],[484,0],[484,0],[485,0],[485,0],[485,1],[485,4],[486,0],[486,1],[486,2],[486,2],[486,4],[487,0],[487,0],[487,0],[487,0],[487,0],[487,0],[487,1],[487,2],[487,4],[487,6],[488,0],[488,1],[489,0],[489,0],[489,0],[489,1],[489,1],[489,4],[490,0],[490,4],[490,5],[490,7],[490,7],[491,0],[491,1],[491,4],[491,12],[492,2],[492,4],[492,4],[492,12],[493,0],[493,2],[493,4],[494,0],[494,1],[494,2],[494,3],[494,4],[495,4],[495,4],[495,12],[496,0],[496,0],[496,2],[497,0],[497,0],[497,7],[497,8],[498,0],[498,1],[498,7],[499,0],[499,0],[499,0],[499,2],[499,6],[499,12],[500,2],[500,2],[500,3],[500,4],[500,12],[501,0],[501,1],[501,2],[502,0],[502,8],[503,4],[503,5],[503,12],[504,0],[504,1],[505,0],[505,0],[505,0],[505,0],[506,0],[506,0],[506,9],[506,9],[506,10],[507,1],[507,6],[508,0],[508,1],[508,2],[508,4],[508,4],[508,5],[509,0],[509,0],[509,2],[509,6],[510,0],[510,0],[510,2],[511,1],[511,2],[511,3],[512,0],[512,0],[512,1],[512,2],[512,2],[513,0],[513,0],[513,11],[514,1],[515,0],[515,0],[515,0],[516,0],[516,4],[516,4],[516,5],[517,0],[517,5],[517,6],[517,6],[518,0],[518,0],[518,0],[518,1],[519,6],[520,0],[520,1],[520,2],[520,5],[521,1],[521,4],[522,0],[522,0],[522,0],[522,1],[522,1],[522,1],[522,5],[522,11],[523,0],[523,0],[523,1],[523,3],[523,3],[524,0],[524,2],[524,5],[525,0],[525,0],[525,0],[525,7],[525,11],[525,12],[526,0],[526,0],[526,0],[526,1],[526,4],[526,4],[526,12],[527,2],[527,4],[527,11],[528,1],[528,1],[528,3],[528,3],[528,4],[529,1],[529,2],[529,2],[529,2],[529,3],[529,3],[530,0],[530,0],[530,1],[530,5],[531,0],[531,1],[531,1],[531,1],[532,0],[533,0],[533,0],[533,2],[534,1],[534,1],[534,8],[535,0],[535,0],[535,1],[538,0],[538,0],[538,5],[538,5],[538,6],[540,0],[540,1],[540,2],[540,5],[540,9],[541,0],[541,0],[541,1],[541,1],[541,3],[541,5],[541,6],[542,3],[543,1],[543,1],[543,2],[544,1],[544,3],[545,0],[545,1],[545,1],[545,5],[546,1],[546,1],[546,8],[547,0],[547,0],[547,2],[547,6],[547,7],[547,7],[548,1],[548,5],[548,8],[549,0],[549,0],[549,1],[549,6],[549,6],[549,8],[550,0],[550,0],[550,1],[550,2],[550,4],[551,0],[551,1],[551,2],[551,2],[551,9],[552,0],[552,0],[552,1],[552,2],[552,4],[552,6],[552,8],[553,0],[553,0],[553,1],[553,2],[553,5],[553,5],[553,5],[554,5],[555,0],[555,1],[555,3],[556,0],[556,1],[556,1],[556,1],[556,2],[557,0],[557,0],[557,3],[557,8],[558,0],[559,0],[559,0],[559,2],[559,4],[560,1],[560,2],[560,4],[560,6],[560,10],[561,1],[561,1],[561,4],[562,2],[562,6],[563,0],[563,0],[563,0],[563,1],[563,7],[564,0],[564,1],[565,1],[565,5],[565,6],[565,9],[566,0],[566,1],[566,1],[566,1],[566,1],[566,2],[566,5],[567,0],[567,0],[568,0],[568,0],[568,1],[568,1],[568,2],[568,5],[568,9],[569,1],[569,1],[570,1],[570,2],[570,4],[571,0],[571,0],[571,2],[571,2],[571,2],[571,2],[571,5],[572,2],[572,4],[572,4],[572,5],[573,0],[573,0],[573,1],[573,1],[573,2],[573,3],[573,5],[573,8],[574,0],[574,0],[574,0],[574,0],[574,0],[574,4],[575,1],[575,2],[575,5],[575,5],[576,1],[576,2],[577,0],[578,0],[578,1],[578,2],[578,4],[579,0],[579,1],[579,5],[580,0],[580,1],[580,3],[580,4],[581,0],[581,5],[581,5],[582,0],[582,1],[582,3],[582,6],[583,9],[584,0],[584,0],[584,1],[584,4],[584,9],[585,0],[585,6],[586,1],[587,0],[587,0],[587,1],[588,0],[588,9],[589,1],[589,2],[589,2],[589,4],[590,0],[590,1],[590,1],[590,5],[591,0],[591,2],[591,8],[592,0],[592,0],[592,2],[593,0],[593,0],[593,1],[593,1],[593,1],[593,1],[593,5],[593,10],[594,0],[594,0],[594,1],[594,1],[594,1],[594,1],[594,7],[595,1],[595,1],[595,5],[596,1],[596,1],[596,2],[596,8],[597,0],[597,4],[597,5],[597,11],[598,0],[598,1],[598,1],[598,1],[598,1],[598,5],[598,6],[598,6],[599,2],[599,4],[600,0],[600,0],[600,1],[600,1],[600,1],[600,1],[600,1],[600,2],[600,2],[600,5],[601,0],[601,0],[601,1],[601,1],[601,1],[601,2],[601,5],[601,5],[601,10],[602,0],[602,1],[602,1],[602,1],[602,3],[603,0],[603,1],[603,1],[603,3],[604,1],[604,5],[605,1],[605,1],[605,2],[605,2],[605,2],[605,4],[606,0],[606,0],[606,3],[607,1],[607,1],[607,8],[608,0],[608,0],[608,1],[608,3],[609,1],[609,1],[609,4],[609,8],[610,0],[610,1],[610,1],[610,10],[611,0],[611,0],[611,1],[612,0],[612,3],[613,0],[613,0],[613,0],[613,0],[614,1],[614,1],[614,5],[614,5],[615,0],[615,1],[616,1],[617,0],[617,2],[617,3],[617,3],[618,0],[618,0],[618,1],[618,1],[618,1],[618,2],[618,2],[618,2],[618,4],[618,4],[619,2],[619,4],[620,0],[620,2],[621,0],[621,0],[621,0],[622,0],[622,0],[622,1],[622,2],[622,4],[623,3],[624,0],[624,0],[624,0],[624,1],[624,2],[624,4],[625,1],[625,1],[625,5],[625,7],[626,0],[626,1],[627,1],[628,4],[629,0],[629,0],[629,1],[629,4],[630,0],[630,0],[630,1],[631,0],[631,1],[631,1],[632,0],[632,1],[632,1],[632,2],[633,0],[633,1],[633,2],[633,3],[634,2],[635,0],[635,0],[635,1],[635,1],[635,2],[635,4],[635,10],[636,0],[636,1],[636,5],[637,0],[637,0],[637,1],[638,1],[638,1],[638,2],[638,3],[639,0],[640,0],[640,3],[640,6],[641,0],[641,1],[641,3],[641,4],[642,2],[642,5],[643,5],[643,6],[643,8],[644,0],[644,2],[644,2],[645,1],[645,1],[646,0],[646,0],[646,5],[646,6],[647,0],[647,1],[647,8],[648,1],[648,2],[648,4],[648,4],[648,5],[649,0],[649,2],[649,5],[649,7],[650,0],[650,1],[650,1],[650,3],[650,6],[651,0],[651,1],[651,5],[651,6],[651,6],[652,2],[652,3],[653,0],[653,0],[653,1],[653,2],[654,0],[654,1],[655,0],[655,1],[655,3],[655,5],[656,1],[656,2],[656,4],[657,0],[657,0],[657,0],[657,2],[657,3],[657,4],[657,4],[658,0],[658,0],[658,1],[659,1],[659,10],[660,0],[660,1],[660,1],[660,3],[661,0],[661,0],[661,1],[661,5],[661,5],[661,8],[662,0],[662,1],[662,2],[663,0],[663,1],[664,0],[664,0],[664,1],[664,1],[664,1],[664,1],[664,1],[665,1],[665,3],[665,4],[666,0],[666,1],[667,0],[667,1],[667,2],[667,4],[668,1],[668,5],[668,9],[669,1],[669,6],[670,1],[670,4],[671,0],[671,0],[671,0],[671,0],[671,1],[671,3],[672,0],[672,0],[672,1],[673,0],[673,1],[673,2],[674,1],[674,1],[674,3],[674,9],[675,0],[675,0],[675,0],[675,1],[676,1],[676,2],[676,10],[677,0],[677,1],[677,1],[677,1],[677,1],[677,8],[678,1],[678,1],[679,1],[680,0],[680,1],[680,2],[681,0],[681,0],[681,1],[681,10],[682,0],[682,0],[682,0],[682,1],[682,2],[682,4],[682,5],[683,0],[683,5],[684,4],[684,6],[685,0],[685,7],[686,1],[686,1],[686,9],[687,1],[688,2],[688,5],[688,6],[689,0],[689,1],[689,1],[689,1],[689,1],[690,0],[690,1],[690,1],[690,4],[691,1],[691,4],[691,5],[692,0],[692,1],[692,6],[693,1],[693,1],[693,1],[693,4],[694,1],[694,2],[694,2],[695,2],[696,3],[697,1],[697,2],[697,3],[698,0],[698,1],[699,1],[699,1],[699,1],[699,4],[699,7],[700,0],[700,0],[700,0],[700,1],[700,2],[701,0],[701,3],[702,1],[702,1],[702,1],[702,5],[704,0],[704,1],[704,4],[704,6],[705,3],[705,5],[705,11],[706,1],[706,1],[706,1],[706,7],[707,1],[707,2],[707,3],[707,5],[707,7],[708,0],[708,3],[708,4],[709,5],[709,5],[710,1],[710,1],[711,1],[711,2],[712,0],[712,1],[712,5],[713,0],[713,1],[713,2],[714,3],[714,5],[715,0],[715,0],[715,0],[715,1],[715,4],[717,0],[717,3],[717,5],[718,0],[718,1],[718,1],[718,5],[719,0],[719,0],[719,2],[719,9],[720,1],[720,2],[720,4],[720,4],[720,5],[721,0],[721,1],[721,1],[721,2],[722,0],[722,0],[722,1],[722,2],[722,2],[722,3],[722,4],[723,0],[723,1],[724,0],[724,1],[724,3],[724,4],[724,6],[725,1],[725,3],[726,1],[726,3],[727,1],[727,2],[727,8],[728,0],[728,1],[728,4],[728,4],[728,5],[729,0],[729,0],[730,1],[730,3],[732,3],[733,0],[733,0],[733,3],[733,3],[733,4],[733,4],[733,4],[734,0],[734,3],[735,1],[735,1],[735,1],[736,0],[736,1],[736,2],[737,2],[738,3],[739,3],[739,3],[740,3],[741,4],[742,4],[742,4],[743,1],[743,1],[743,8],[744,0],[744,1],[744,1],[745,0],[745,0],[745,1],[745,1],[745,4],[746,0],[746,1],[746,1],[746,1],[746,2],[746,5],[746,7],[747,0],[747,0],[747,1],[747,8],[748,0],[748,1],[748,4],[749,2],[749,3],[750,0],[751,1],[751,4],[751,6],[752,1],[752,5],[753,1],[753,1],[753,1],[753,4],[753,5],[754,1],[755,1],[755,3],[756,0],[756,1],[757,0],[758,1],[758,1],[758,1],[759,1],[759,1],[759,3],[760,9],[761,0],[761,0],[761,2],[761,2],[761,3],[761,5],[761,7],[762,1],[763,2],[764,3],[765,1],[766,4],[767,0],[767,1],[767,2],[768,4],[769,9],[770,0],[770,0],[770,3],[771,0],[771,1],[771,1],[771,2],[771,9],[772,9],[773,0],[773,0],[773,1],[774,0],[774,0],[774,1],[774,5],[774,5],[775,0],[775,2],[775,3],[775,6],[776,0],[776,1],[776,4],[777,1],[777,7],[778,1],[778,4],[778,7],[779,0],[779,1],[779,10],[780,1],[781,2],[781,9],[782,2],[782,3],[783,1],[784,1],[784,4],[784,6],[784,6],[785,1],[785,4],[786,4],[787,1],[787,3],[788,0],[788,0],[788,1],[788,3],[789,0],[789,0],[789,3],[790,0],[790,2],[790,2],[790,2],[790,3],[790,4],[791,1],[791,2],[792,0],[792,1],[792,1],[792,4],[793,0],[795,2],[796,0],[796,0],[796,0],[796,3],[797,1],[797,4],[798,4],[799,0],[799,0],[799,1],[799,3],[799,6],[800,0],[800,1],[800,1],[801,4],[802,0],[802,0],[802,2],[802,3],[802,3],[802,3],[803,1],[803,3],[803,7],[804,1],[804,1],[804,3],[806,0],[806,1],[806,1],[808,1],[808,2],[809,1],[809,2],[809,9],[810,4],[811,0],[811,2],[811,4],[811,7],[812,2],[812,3],[813,1],[816,0],[816,1],[817,0],[817,1],[817,5],[818,0],[818,0],[818,1],[818,1],[818,1],[819,0],[819,0],[819,4],[820,3],[821,0],[821,1],[822,1],[822,3],[823,4],[823,5],[823,5],[824,0],[824,1],[824,2],[824,4],[824,5],[825,0],[826,0],[826,1],[826,10],[827,0],[828,1],[828,1],[828,2],[828,3],[828,4],[828,4],[829,2],[829,4],[830,1],[830,2],[830,3],[830,6],[831,3],[831,4],[832,0],[832,1],[832,3],[832,4],[832,9],[833,3],[834,0],[834,1],[834,2],[834,3],[834,9],[834,10],[835,1],[836,1],[836,2],[836,3],[836,3],[837,3],[837,3],[838,0],[838,1],[838,3],[838,3],[838,9],[838,10],[839,0],[839,5],[840,1],[841,10],[842,0],[842,0],[842,2],[842,4],[843,0],[843,0],[843,0],[843,1],[843,2],[843,3],[843,3],[844,1],[844,2],[844,5],[845,1],[845,3],[846,1],[846,4],[847,1],[847,1],[849,5],[849,5],[850,1],[850,5],[851,0],[851,1],[851,1],[851,3],[852,0],[852,2],[852,2],[853,0],[853,0],[853,2],[854,0],[854,1],[854,1],[854,2],[854,8],[856,1],[856,3],[856,5],[857,0],[857,2],[857,3],[857,3],[858,0],[858,0],[858,1],[858,1],[859,0],[859,4],[860,0],[860,2],[860,6],[861,1],[861,3],[863,1],[863,1],[863,2],[864,0],[865,1],[865,2],[865,2],[865,5],[866,2],[866,2],[866,3],[867,1],[867,6],[868,0],[868,0],[868,0],[868,1],[868,5],[869,0],[869,0],[869,1],[869,2],[869,3],[869,4],[870,0],[870,0],[870,2],[870,3],[870,4],[870,5],[871,0],[871,0],[871,3],[871,6],[871,8],[872,1],[872,8],[874,2],[874,2],[874,2],[875,0],[875,1],[875,1],[875,2],[875,2],[875,3],[876,0],[876,2],[876,2],[876,2],[876,6],[877,1],[877,1],[877,1],[877,1],[878,0],[878,1],[879,5],[880,1],[880,1],[880,7],[881,1],[881,1],[881,1],[881,2],[881,2],[881,2],[881,5],[881,6],[882,1],[882,1],[882,3],[883,1],[884,0],[884,1],[884,1],[884,2],[884,2],[884,3],[884,7],[885,3],[886,0],[886,2],[887,0],[887,0],[887,0],[887,8],[887,9],[889,0],[889,0],[889,0],[889,1],[889,6],[890,0],[890,3],[890,7],[891,1],[891,2],[891,3],[892,0],[892,1],[892,1],[892,3],[893,0],[893,0],[893,1],[893,1],[893,2],[894,0],[894,0],[894,1],[894,2],[894,4],[895,1],[896,1],[896,1],[897,0],[897,0],[897,1],[897,3],[898,1],[898,1],[899,0],[899,1],[899,5],[900,1],[901,1],[901,1],[901,2],[902,0],[902,0],[902,2],[902,2],[902,3],[902,4],[902,10],[903,1],[903,2],[904,0],[905,1],[905,1],[905,5],[906,0],[906,1],[906,1],[906,2],[906,4],[906,7],[907,1],[907,1],[907,4],[907,11],[908,0],[908,1],[908,2],[909,0],[909,0],[909,1],[909,1],[909,3],[909,4],[910,0],[910,0],[911,0],[911,1],[911,4],[911,7],[912,0],[912,1],[912,4],[913,0],[913,0],[913,1],[913,1],[914,0],[914,1],[914,9],[915,0],[915,1],[915,1],[915,2],[916,0],[916,1],[916,2],[916,2],[916,5],[917,1],[917,1],[917,2],[917,2],[917,2],[917,4],[918,0],[918,0],[918,2],[919,1],[919,1],[919,2],[919,4],[920,0],[920,0],[920,1],[920,3],[920,7],[921,0],[921,0],[921,1],[921,3],[922,0],[922,0],[922,1],[922,2],[923,1],[923,3],[924,1],[924,1],[924,4],[924,5],[925,0],[925,0],[925,1],[925,2],[926,0],[926,1],[926,1],[927,0],[927,0],[927,1],[927,1],[927,2],[927,5],[928,0],[928,0],[928,1],[928,3],[928,5],[928,8],[929,2],[929,3],[929,4],[930,1],[930,1],[931,0],[931,0],[932,0],[932,1],[932,1],[932,1],[932,1],[933,0],[933,8],[934,0],[934,1],[935,0],[935,1],[935,1],[935,1],[935,2],[935,2],[935,2],[937,1],[937,3],[937,3],[938,1],[938,2],[938,3],[939,0],[940,1],[941,1],[941,1],[941,4],[941,5],[942,1],[942,1],[942,1],[942,2],[943,0],[943,1],[943,2],[943,2],[943,2],[943,3],[943,8],[944,0],[944,1],[945,0],[945,0],[945,0],[945,1],[945,2],[945,2],[945,5],[946,1],[946,1],[946,1],[946,1],[946,1],[946,3],[947,1],[947,1],[947,8],[948,0],[948,0],[948,1],[948,1],[948,4],[948,5],[948,5],[949,0],[949,1],[949,1],[949,1],[949,1],[949,2],[950,1],[950,2],[951,0],[951,1],[952,0],[952,3],[953,0],[953,2],[953,2],[955,1],[955,1],[955,3],[955,5],[956,0],[956,0],[956,1],[956,2],[957,1],[957,1],[957,1],[957,2],[957,2],[958,0],[958,1],[958,1],[958,2],[959,0],[959,0],[959,0],[959,1],[959,1],[959,4],[961,0],[961,0],[961,0],[961,0],[962,1],[962,2],[962,2],[963,1],[963,1],[964,0],[964,1],[964,5],[965,0],[965,0],[965,1],[965,1],[965,3],[965,5],[966,1],[966,1],[967,1],[967,1],[967,1],[967,5],[968,0],[968,0],[968,2],[968,5],[968,9],[969,0],[969,2],[969,3],[969,7],[970,0],[970,0],[970,0],[970,0],[971,0],[971,2],[971,5],[972,0],[972,1],[973,2],[973,2],[973,5],[974,0],[974,0],[974,1],[975,6],[976,0],[977,0],[977,2],[977,7],[977,9],[978,0],[978,0],[978,1],[979,4],[981,1],[981,1],[981,1],[981,2],[982,2],[982,3],[982,10],[983,0],[983,0],[983,1],[983,6],[984,0],[984,0],[984,5],[984,9],[985,1],[985,3],[985,4],[985,4],[986,0],[986,0],[986,4],[986,4],[987,10],[988,0],[988,1],[988,1],[988,2],[988,2],[989,0],[989,0],[989,1],[989,9],[990,0],[990,4],[991,0],[991,1],[991,1],[991,1],[991,2],[991,2],[992,1],[992,2],[992,3],[993,0],[993,1],[993,3],[994,0],[994,0],[994,0],[995,0],[995,1],[995,1],[995,3],[996,2],[996,4],[997,0],[997,0],[997,1],[997,2],[997,2],[997,4],[997,5],[998,2],[998,2],[999,2],[999,3],[999,4],[1000,1],[1000,5],[1001,1],[1001,1],[1001,4],[1002,0],[1002,0],[1002,0],[1002,1],[1002,4],[1002,4],[1003,0],[1003,1],[1003,2],[1003,2],[1004,1],[1004,2],[1004,2],[1004,2],[1004,4],[1004,7],[1005,0],[1005,0],[1005,3],[1005,5],[1005,7],[1006,2],[1006,2],[1006,4],[1007,0],[1007,0],[1007,1],[1007,1],[1007,1],[1007,1],[1008,3],[1008,7],[1009,0],[1009,2],[1010,0],[1010,1],[1010,1],[1011,0],[1011,1],[1011,1],[1011,3],[1011,3],[1011,4],[1011,11],[1013,0],[1013,0],[1013,0],[1013,9],[1014,0],[1014,0],[1014,0],[1015,1],[1015,2],[1016,0],[1016,1],[1016,1],[1016,4],[1017,1],[1017,1],[1017,1],[1017,2],[1017,2],[1017,9],[1018,0],[1018,2],[1018,5],[1019,0],[1019,0],[1019,1],[1019,1],[1019,1],[1019,2],[1019,2],[1019,2],[1020,0],[1020,2],[1020,2],[1021,0],[1021,1],[1022,0],[1022,1],[1022,5],[1023,0],[1023,0],[1023,2],[1023,2],[1023,3],[1023,6],[1024,0],[1024,0],[1024,0],[1024,0],[1024,1],[1024,3],[1024,4],[1024,5],[1025,0],[1025,0],[1025,0],[1025,1],[1025,2],[1025,2],[1025,3],[1026,1],[1026,2],[1026,3],[1026,4],[1027,1],[1027,1],[1027,2],[1027,2],[1027,4],[1027,4],[1027,10],[1027,10],[1029,3],[1030,0],[1030,1],[1030,1],[1031,1],[1031,1],[1031,1],[1031,1],[1031,1],[1032,1],[1032,1],[1032,4],[1032,8],[1033,2],[1033,3],[1033,4],[1034,0],[1034,1],[1034,2],[1035,1],[1035,2],[1035,8],[1036,0],[1036,5],[1037,0],[1037,1],[1037,1],[1037,1],[1037,9],[1038,0],[1038,0],[1038,5],[1039,1],[1039,5],[1040,0],[1040,0],[1040,1],[1040,2],[1040,2],[1040,6],[1041,4],[1042,0],[1042,1],[1042,1],[1042,2],[1042,3],[1042,3],[1043,0],[1043,3],[1043,3],[1043,7],[1044,0],[1044,0],[1044,1],[1044,2],[1045,0],[1045,4],[1045,5],[1046,1],[1046,4],[1046,4],[1047,1],[1047,1],[1047,6],[1048,0],[1048,0],[1048,1],[1048,1],[1049,0],[1049,0],[1049,5],[1049,7],[1050,0],[1050,1],[1050,3],[1050,7],[1051,1],[1051,11],[1052,0],[1052,4],[1053,0],[1053,1],[1053,1],[1053,3],[1053,3],[1053,11],[1054,5],[1055,1],[1055,3],[1056,0],[1056,0],[1056,3],[1056,6],[1057,0],[1057,0],[1057,1],[1057,3],[1057,3],[1058,2],[1058,4],[1058,9],[1059,6],[1059,7],[1060,0],[1060,0],[1060,0],[1060,1],[1060,1],[1060,1],[1060,3],[1061,0],[1061,0],[1061,5],[1061,6],[1061,7],[1062,0],[1062,0],[1062,2],[1062,3],[1062,3],[1062,6],[1062,8],[1063,1],[1063,2],[1063,5],[1064,0],[1064,4],[1065,0],[1065,0],[1065,0],[1065,3],[1065,4],[1065,4],[1065,6],[1066,2],[1067,0],[1067,1],[1067,5],[1068,1],[1068,2],[1069,1],[1069,2],[1070,0],[1070,0],[1070,2],[1070,3],[1070,4],[1070,4],[1070,5],[1070,5],[1071,1],[1072,1],[1072,2],[1073,1],[1073,3],[1074,0],[1074,0],[1075,1],[1075,1],[1075,1],[1075,2],[1075,5],[1076,0],[1076,2],[1076,3],[1077,0],[1077,0],[1077,1],[1077,1],[1077,5],[1078,0],[1078,0],[1078,0],[1079,0],[1079,4],[1079,4],[1080,0],[1080,0],[1080,8],[1080,13],[1081,1],[1081,1],[1081,2],[1082,0],[1082,1],[1082,3],[1082,4],[1083,2],[1083,4],[1084,1],[1085,0],[1086,0],[1086,1],[1086,1],[1086,2],[1086,2],[1087,0],[1087,0],[1087,1],[1087,1],[1087,3],[1087,3],[1088,1],[1088,2],[1088,2],[1088,4],[1088,8],[1089,1],[1089,5],[1090,1],[1091,4],[1092,0],[1092,1],[1092,2],[1092,4],[1092,8],[1093,3],[1093,6],[1094,0],[1094,0],[1094,1],[1094,1],[1094,4],[1094,5],[1094,5],[1095,0],[1095,0],[1095,1],[1095,2],[1095,3],[1096,1],[1096,1],[1096,8],[1097,0],[1097,1],[1097,2],[1097,2],[1098,2],[1098,2],[1098,4],[1098,6],[1099,3],[1099,4],[1100,2],[1101,0],[1101,1],[1101,1],[1102,0],[1102,11],[1103,1],[1104,1],[1104,1],[1105,0],[1105,0],[1106,0],[1106,1],[1106,1],[1106,3],[1106,3],[1106,3],[1107,1],[1107,1],[1107,2],[1108,0],[1108,1],[1108,1],[1108,10],[1109,0],[1109,1],[1109,1],[1109,3],[1109,5],[1110,1],[1110,2],[1110,2],[1110,3],[1110,9],[1112,0],[1112,3],[1112,3],[1112,10],[1113,0],[1113,0],[1114,0],[1114,1],[1114,1],[1114,5],[1114,8],[1115,2],[1115,2],[1115,6],[1116,1],[1116,2],[1116,6],[1117,1],[1117,2],[1117,4],[1117,5],[1118,0],[1118,0],[1118,4],[1118,4],[1119,0],[1119,1],[1119,5],[1120,3],[1121,0],[1121,0],[1121,1],[1121,1],[1121,3],[1122,0],[1122,0],[1122,1],[1122,3],[1122,3],[1122,9],[1123,0],[1123,0],[1123,1],[1123,1],[1124,1],[1124,1],[1124,1],[1124,6],[1125,0],[1125,0],[1125,1],[1125,3],[1126,0],[1126,1],[1126,2],[1126,11],[1127,2],[1127,2],[1128,1],[1128,1],[1128,2],[1129,1],[1129,1],[1129,1],[1130,0],[1130,0],[1130,1],[1130,1],[1130,5],[1131,1],[1131,1],[1131,2],[1132,0],[1132,1],[1132,3],[1132,3],[1132,4],[1132,5],[1134,0],[1134,1],[1134,2],[1134,3],[1134,3],[1134,5],[1134,6],[1135,0],[1135,2],[1135,5],[1136,1],[1137,2],[1137,3],[1138,0],[1138,0],[1138,3],[1138,5],[1139,0],[1139,3],[1140,0],[1140,0],[1140,2],[1141,0],[1141,0],[1141,3],[1141,4],[1141,5],[1141,6],[1142,0],[1142,0],[1142,8],[1143,0],[1143,0],[1143,0],[1143,1],[1143,8],[1144,0],[1144,1],[1144,2],[1145,4],[1145,4],[1145,5],[1146,8],[1147,1],[1147,3],[1148,1],[1148,3],[1149,1],[1150,1],[1150,1],[1150,3],[1150,4],[1150,4],[1150,5],[1151,1],[1152,0],[1152,1],[1152,1],[1152,3],[1152,3],[1152,4],[1152,4],[1153,1],[1153,3],[1153,6],[1154,3],[1155,0],[1155,0],[1155,1],[1156,0],[1156,0],[1156,1],[1156,2],[1156,5],[1157,0],[1157,0],[1157,1],[1158,2],[1158,3],[1158,5],[1159,0],[1159,0],[1159,0],[1159,2],[1160,10],[1161,1],[1161,1],[1161,2],[1161,6],[1161,8],[1162,0],[1162,0],[1162,1],[1162,4],[1162,6],[1163,0],[1163,1],[1163,4],[1164,0],[1164,1],[1164,4],[1165,0],[1165,0],[1165,1],[1165,2],[1165,2],[1166,1],[1166,3],[1166,3],[1166,4],[1166,6],[1167,3],[1168,0],[1168,1],[1168,5],[1169,0],[1169,1],[1169,1],[1169,3],[1169,8],[1170,0],[1170,1],[1170,2],[1171,0],[1171,0],[1171,1],[1171,1],[1172,1],[1172,4],[1173,1],[1173,2],[1173,3],[1174,1],[1174,3],[1174,4],[1175,0],[1175,0],[1175,0],[1175,1],[1175,1],[1175,1],[1175,1],[1175,3],[1175,3],[1176,0],[1176,1],[1176,4],[1176,4],[1176,5],[1177,1],[1177,2],[1177,8],[1178,1],[1178,5],[1179,2],[1180,0],[1180,0],[1180,1],[1180,1],[1180,2],[1180,3],[1180,6],[1181,0],[1181,0],[1181,0],[1181,3],[1182,0],[1182,0],[1182,1],[1182,1],[1182,2],[1182,2],[1182,3],[1182,4],[1183,0],[1183,0],[1183,0],[1183,1],[1183,1],[1183,3],[1183,3],[1183,4],[1183,6],[1184,0],[1184,2],[1184,3],[1184,5],[1185,0],[1185,1],[1185,4],[1185,5],[1185,7],[1186,1],[1186,4],[1186,6],[1186,7],[1188,1],[1189,1],[1189,3],[1189,4],[1190,0],[1190,6],[1191,0],[1191,1],[1191,1],[1191,1],[1191,1],[1191,1],[1191,3],[1191,4],[1193,0],[1193,1],[1193,1],[1193,1],[1193,3],[1193,3],[1194,0],[1194,1],[1194,2],[1194,3],[1195,0],[1195,0],[1195,3],[1195,10],[1196,0],[1196,0],[1196,4],[1197,0],[1197,0],[1197,1],[1197,2],[1197,3],[1198,0],[1198,0],[1198,0],[1198,1],[1198,1],[1199,0],[1199,0],[1199,0],[1199,1],[1199,1],[1200,0],[1200,0],[1200,6],[1201,0],[1201,0],[1201,2],[1201,2],[1201,3],[1201,10],[1202,0],[1202,0],[1202,3],[1203,0],[1203,0],[1203,0],[1203,1],[1203,1],[1203,2],[1205,0],[1205,0],[1205,0],[1205,2],[1205,8],[1206,0],[1206,2],[1206,3],[1207,5],[1208,0],[1208,0],[1208,1],[1208,1],[1208,1],[1208,3],[1209,0],[1209,5],[1210,0],[1210,0],[1210,1],[1210,9],[1211,0],[1211,0],[1211,0],[1211,0],[1211,1],[1212,1],[1212,1],[1212,4],[1212,11],[1213,0],[1214,0],[1214,0],[1214,5],[1214,6],[1215,1],[1215,4],[1215,4],[1216,2],[1216,5],[1217,0],[1217,1],[1217,5],[1218,1],[1218,1],[1218,2],[1218,4],[1219,0],[1219,0],[1219,1],[1219,5],[1219,10],[1220,0],[1220,0],[1220,1],[1220,1],[1220,2],[1220,3],[1221,0],[1221,1],[1221,1],[1221,2],[1221,5],[1221,5],[1222,0],[1222,0],[1222,1],[1222,1],[1222,3],[1223,1],[1223,2],[1223,3],[1223,7],[1224,1],[1224,1],[1225,0],[1225,5],[1226,2],[1226,2],[1226,5],[1226,5],[1227,0],[1227,1],[1227,5],[1228,0],[1228,4],[1228,11],[1229,0],[1229,1],[1229,2],[1229,4],[1229,5],[1229,5],[1230,0],[1230,0],[1230,8],[1231,0],[1231,2],[1231,2],[1232,0],[1232,0],[1232,0],[1232,1],[1232,3],[1232,5],[1233,0],[1233,2],[1233,2],[1233,4],[1233,4],[1235,1],[1235,1],[1236,0],[1236,1],[1236,2],[1236,3],[1237,1],[1237,1],[1237,2],[1238,0],[1238,1],[1238,2],[1238,2],[1238,5],[1239,0],[1239,0],[1239,0],[1239,0],[1239,0],[1239,1],[1239,1],[1239,1],[1239,2],[1239,2],[1239,2],[1240,0],[1240,0],[1240,0],[1240,2],[1240,2],[1240,2],[1241,1],[1241,5],[1242,1],[1242,1],[1242,2],[1242,2],[1243,0],[1243,1],[1243,1],[1243,4],[1244,0],[1244,3],[1244,3],[1244,3],[1244,5],[1245,0],[1245,1],[1245,1],[1245,1],[1245,2],[1246,1],[1246,5],[1247,1],[1247,2],[1248,0],[1248,1],[1248,1],[1248,2],[1248,3],[1248,3],[1248,3],[1250,1],[1250,1],[1250,3],[1251,0],[1251,0],[1251,0],[1251,2],[1251,3],[1251,6],[1252,0],[1252,0],[1252,1],[1252,2],[1253,0],[1253,0],[1253,0],[1253,2],[1253,5],[1254,0],[1254,13],[1255,0],[1255,1],[1255,1],[1255,2],[1255,2],[1255,5],[1256,0],[1256,0],[1256,1],[1256,1],[1256,1],[1256,2],[1256,5],[1257,11],[1258,0],[1258,0],[1258,0],[1258,1],[1258,1],[1258,5],[1258,7],[1259,0],[1259,0],[1259,0],[1259,1],[1259,1],[1259,1],[1259,1],[1259,3],[1259,6],[1260,1],[1260,1],[1260,1],[1261,0],[1261,0],[1261,2],[1262,0],[1262,0],[1262,1],[1262,2],[1262,2],[1262,3],[1263,5],[1264,0],[1264,0],[1264,1],[1264,1],[1264,2],[1265,0],[1265,0],[1265,0],[1266,0],[1266,1],[1266,2],[1266,3],[1266,7],[1267,9],[1267,10],[1268,0],[1268,1],[1268,2],[1268,3],[1269,0],[1269,0],[1269,0],[1269,0],[1270,1],[1270,3],[1271,0],[1271,1],[1271,1],[1271,1],[1272,1],[1272,1],[1273,0],[1273,0],[1273,1],[1273,3],[1273,5],[1273,5],[1273,6],[1274,0],[1274,1],[1274,3],[1274,5],[1275,0],[1275,1],[1275,2],[1276,2],[1276,5],[1277,0],[1277,1],[1277,1],[1277,2],[1277,3],[1277,4],[1278,0],[1278,0],[1278,1],[1278,2],[1278,4],[1278,4],[1278,8],[1279,0],[1279,0],[1279,1],[1279,1],[1279,1],[1279,2],[1280,1],[1280,1],[1280,1],[1280,3],[1280,3],[1281,0],[1281,0],[1281,1],[1281,1],[1281,1],[1281,1],[1282,0],[1282,0],[1282,1],[1283,0],[1283,0],[1283,5],[1284,1],[1284,1],[1284,1],[1284,3],[1285,1],[1285,1],[1286,0],[1286,1],[1286,5],[1286,6],[1287,2],[1287,5],[1287,6],[1288,8],[1289,1],[1289,1],[1289,1],[1289,2],[1289,9],[1290,0],[1290,0],[1290,1],[1290,1],[1291,0],[1291,0],[1291,1],[1291,5],[1292,3],[1292,10],[1293,0],[1293,0],[1293,1],[1293,2],[1293,3],[1293,6],[1293,6],[1294,1],[1294,1],[1294,2],[1295,0],[1295,1],[1295,6],[1296,0],[1297,0],[1297,6],[1298,0],[1298,2],[1298,3],[1298,5],[1298,10],[1299,0],[1299,1],[1299,1],[1300,0],[1300,1],[1300,1],[1300,2],[1301,0],[1301,0],[1301,2],[1301,6],[1302,1],[1303,0],[1303,1],[1303,1],[1304,1],[1304,1],[1304,2],[1304,2],[1304,2],[1304,5],[1305,0],[1305,4],[1306,0],[1306,1],[1306,1],[1306,5],[1307,0],[1307,1],[1307,1],[1307,1],[1308,0],[1308,1],[1308,1],[1308,2],[1309,0],[1309,2],[1310,0],[1310,0],[1310,1],[1310,2],[1310,4],[1311,0],[1311,0],[1311,2],[1311,2],[1311,4],[1311,5],[1312,0],[1312,5],[1313,0],[1313,0],[1313,0],[1313,0],[1313,2],[1313,2],[1313,7],[1313,8],[1314,0],[1314,0],[1314,1],[1314,1],[1314,1],[1314,2],[1314,5],[1315,0],[1315,1],[1315,2],[1315,4],[1315,6],[1316,0],[1316,0],[1316,2],[1316,3],[1316,5],[1316,6],[1317,0],[1317,1],[1317,1],[1317,7],[1318,1],[1318,1],[1318,8],[1319,1],[1319,1],[1320,1],[1320,1],[1320,2],[1320,5],[1321,3],[1322,0],[1322,0],[1322,1],[1322,2],[1322,7],[1323,0],[1323,2],[1323,4],[1323,4],[1324,3],[1324,4],[1325,0],[1326,0],[1326,0],[1326,1],[1326,2],[1326,3],[1326,5],[1327,0],[1327,1],[1327,1],[1327,1],[1327,1],[1327,2],[1327,2],[1327,2],[1327,3],[1328,0],[1328,1],[1328,2],[1328,2],[1328,3],[1329,0],[1329,0],[1329,1],[1329,3],[1329,4],[1330,2],[1330,3],[1330,4],[1331,0],[1331,1],[1332,0],[1332,1],[1332,4],[1333,1],[1333,1],[1333,1],[1333,1],[1333,3],[1334,0],[1334,0],[1334,1],[1334,4],[1335,1],[1335,3],[1335,4],[1335,4],[1335,8],[1336,1],[1336,2],[1337,0],[1337,0],[1337,1],[1337,2],[1338,0],[1338,1],[1338,1],[1338,3],[1339,1],[1339,2],[1339,3],[1340,1],[1340,5],[1341,0],[1341,0],[1341,7],[1341,7],[1342,0],[1342,0],[1343,0],[1343,0],[1343,0],[1343,0],[1344,0],[1344,2],[1344,3],[1344,6],[1345,3],[1346,2],[1346,3],[1347,1],[1347,2],[1348,0],[1348,0],[1348,2],[1349,1],[1349,3],[1350,1],[1350,4],[1351,0],[1351,0],[1351,1],[1351,1],[1351,4],[1351,8],[1352,0],[1352,1],[1352,4],[1352,6],[1353,2],[1353,5],[1354,0],[1354,0],[1354,1],[1354,3],[1355,0],[1355,1],[1355,1],[1356,0],[1356,0],[1356,2],[1356,4],[1357,0],[1357,1],[1357,3],[1358,0],[1359,1],[1359,2],[1360,2],[1360,3],[1361,2],[1362,0],[1362,0],[1362,1],[1362,2],[1362,2],[1362,4],[1362,10],[1363,1],[1363,2],[1365,0],[1365,1],[1365,4],[1365,6],[1366,0],[1366,0],[1366,4],[1366,6],[1367,0],[1368,2],[1369,0],[1369,0],[1369,0],[1369,1],[1369,2],[1369,2],[1370,0],[1370,0],[1370,2],[1371,0],[1371,2],[1371,3],[1371,3],[1371,6],[1371,11],[1372,0],[1372,1],[1372,1],[1372,2],[1372,2],[1372,6],[1373,1],[1373,5],[1374,0],[1374,1],[1374,2],[1374,4],[1374,8],[1375,1],[1375,2],[1376,0],[1376,1],[1377,1],[1377,1],[1377,3],[1378,0],[1378,1],[1378,2],[1378,10],[1379,1],[1379,2],[1380,2],[1380,4],[1381,0],[1381,1],[1381,2],[1382,0],[1382,1],[1382,1],[1382,3],[1382,4],[1383,0],[1383,2],[1383,2],[1383,3],[1383,5],[1383,5],[1384,0],[1384,0],[1384,2],[1384,3],[1384,4],[1385,0],[1385,1],[1386,1],[1386,1],[1387,2],[1387,3],[1388,0],[1388,0],[1388,5],[1389,0],[1389,1],[1389,1],[1389,2],[1389,3],[1389,3],[1389,5],[1390,0],[1390,0],[1390,0],[1390,1],[1390,4],[1391,0],[1391,1],[1391,2],[1391,4],[1391,5],[1393,1],[1394,0],[1394,0],[1394,1],[1394,1],[1394,3],[1395,0],[1396,0],[1396,0],[1396,0],[1396,1],[1396,1],[1396,2],[1396,3],[1397,1],[1397,2],[1397,2],[1398,0],[1398,1],[1398,6],[1398,6],[1399,0],[1399,1],[1399,2],[1399,2],[1400,0],[1400,0],[1400,0],[1400,1],[1401,1],[1401,1],[1402,0],[1402,2],[1402,7],[1403,6],[1404,0],[1404,0],[1404,2],[1404,8],[1405,0],[1405,0],[1405,9],[1407,0],[1407,2],[1408,1],[1408,2],[1409,0],[1409,1],[1409,1],[1409,2],[1409,3],[1410,0],[1410,0],[1410,0],[1410,1],[1411,2],[1411,3],[1411,4],[1412,0],[1412,1],[1412,1],[1412,3],[1412,6],[1413,0],[1413,3],[1413,3],[1413,3],[1414,0],[1414,1],[1414,1],[1414,2],[1415,2],[1416,6],[1417,0],[1417,13],[1418,0],[1418,0],[1419,0],[1420,2],[1420,2],[1420,4],[1421,0],[1422,0],[1422,0],[1422,0],[1422,2],[1422,2],[1422,4],[1424,0],[1424,1],[1425,0],[1426,0],[1426,0],[1426,0],[1426,2],[1427,2],[1429,0],[1431,1],[1431,5],[1431,7],[1432,0],[1432,1],[1432,1],[1434,0],[1434,4],[1435,0],[1437,0],[1437,1],[1438,0],[1439,0],[1439,0],[1439,2]]};
+const BOUNDS=[120,300,600,1200,1800,3600,14400];
+const ANS=[[.228,.143,.075],[.234,.136,.108],[.242,.155,.111],[.236,.183,.117],[.205,.223,.118],[.218,.207,.112],[.202,.203,.114]];
+const SALE=[[27.0,6.5,6.3],[24.3,13.1,9.8],[22.7,11.4,9.6],[19.7,14.7,8.6],[19.6,17.9,10.1],[5.6,13.1,8.1],[7.2,12.0,9.1]];
+const RE_MIN=120, RE_MAX=300, RING_NO=24, RING_YES=13, TALK_NO=205, TALK_SALE=468, WRAP=38, W0=60, W1=1500, W2=3000, W3=5400, DAY=86400;
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const LEADS=(()=>{const r=rng(1102);return D.l.map(([m,e])=>[m*60+Math.floor(r()*60),e]).sort((a,b)=>a[0]-b[0])})();
+const ARR=Int32Array.from(LEADS,x=>x[0]),EC=Uint8Array.from(LEADS,x=>x[1]);
+const N=ARR.length,EMP=D.e,curto=n=>n.replace(/ (Ltda|Comércio|Marketing Digital)$/,"");
+const mark=new Uint8Array(EMP.length); // 0 Normal (padrão), 1 Preferência, 2 Ruim
+const novaConta=()=>EMP.map(()=>({leads:0,lig:0,sale:0,never:0}));
+const FX=[[W0,W1],[W1,W2],[W2,W3]];
+const bucket=a=>{for(let i=0;i<7;i++)if(a<BOUNDS[i])return i;return 6};
+const kc=k=>k>1?2:k;
+
+class Sim{
+  constructor(nAg,per,seed){
+    this.r=rng(seed);this.t=0;this.next=0;this.per=per;this.last=new Int32Array(N);this.reN=0;this.reIn=0;
+    this.k=new Uint8Array(N);this.ready=new Int32Array(N);this.st=new Uint8Array(N); // st: 0 na lista, 1 tocando, 2 falando, 3 saiu
+    this.act=[];this.ring=[];this.ag=[];this.nAg=nAg;this.rec=false;this.ev=[];
+    this.out={sale:0,talk:0,old:0,never:0,lost:0};this.fSum=0;this.fN=0;
+    this.w=-1;this.wNext=false;this.wh=[];this.wEnd=null;this.cs=novaConta();this.t0=Infinity;
+  }
+  start(){this.t0=this.t;for(let i=0;i<this.nAg;i++)this.addAgent()}
+  addAgent(){const off=this.ag.find(a=>!a.on);if(off){off.on=true;if(off.st==="off")off.st="free";return}
+    this.ag.push({on:true,st:"free",lead:-1,until:0,sale:false,start:0,ended:-99,k:0})}
+  removeAgent(){for(let i=this.ag.length-1;i>=0;i--)if(this.ag[i].on){this.ag[i].on=false;return}}
+  trail(id,cls,txt,end){if(id!==this.w||!this.rec)return;this.wh.push([this.t,cls,txt]);if(end)this.wEnd=txt}
+  log(cls,txt){if(!this.rec)return;this.ev.unshift([this.t,cls,txt]);if(this.ev.length>14)this.ev.length=14}
+  back(id){this.k[id]++;this.st[id]=0;this.last[id]=this.t;this.ready[id]=this.t+RE_MIN}
+  // Procura um lead da marca g em uma faixa: novo do mais recente para trás, ou religação de quem espera há mais tempo
+  find(g,[lo,hi],novo){const t=this.t;let re=-1,reLast=Infinity;
+    for(let i=this.act.length-1;i>=0;i--){const id=this.act[i],age=t-ARR[id];if(age<lo)continue;if(age>=hi)break;
+      if(this.st[id]!==0||mark[EC[id]]!==g)continue;
+      if(novo){if(this.k[id]===0)return id}
+      else if(this.k[id]>0&&t>=this.ready[id]&&this.last[id]<reLast){re=id;reLast=this.last[id]}}
+    return re}
+  // Sem Preferência: faixas em ordem, novo antes de religar. Com Preferência, ela só passa na frente até 50 min.
+  // Até 25 min e depois de 25 a 50 min: novo de Preferência, novo de Normal, religar Preferência. Depois religar Normal até 50 min. Depois 50 min a 1h30. Por último, Ruim.
+  pick(){const P=1,NORMAL=0,RUIM=2,[F1,F2,F3]=FX;
+    const ordem=mark.includes(P)
+      ?[[P,F1,1],[NORMAL,F1,1],[P,F1,0],[P,F2,1],[NORMAL,F2,1],[P,F2,0],[NORMAL,F1,0],[NORMAL,F2,0],[P,F3,1],[NORMAL,F3,1],[P,F3,0],[NORMAL,F3,0]]
+      :[[NORMAL,F1,1],[NORMAL,F1,0],[NORMAL,F2,1],[NORMAL,F2,0],[NORMAL,F3,1],[NORMAL,F3,0]];
+    for(const [g,f,novo] of ordem){const id=this.find(g,f,novo);if(id>=0)return id}
+    return this.find(RUIM,F1,1)}
+  step(){
+    const t=this.t;
+    while(this.next<N&&ARR[this.next]<=t){const id=this.next++;this.act.push(id);
+      if(this.rec){this.cs[EC[id]].leads++;this.log("",`${nome(id)} abandonou o carrinho`);if(this.wNext){this.w=id;this.wNext=false;this.wh=[];this.wEnd=null}}
+      this.trail(id,"","Abandonou o carrinho. Espera 1 min para entrar na lista.")}
+    for(const id of this.act)if(this.st[id]===0&&t-ARR[id]>=W3){this.st[id]=3;
+      if(this.rec){this.out.old++;if(this.k[id]===0){this.out.never++;if(ARR[id]>=this.t0)this.cs[EC[id]].never++}}
+      this.trail(id,"r",this.k[id]?`Passou de 1h30 sem atender (${this.k[id]} ligações). Saiu da lista.`:"Passou de 1h30 e nunca recebeu ligação. Saiu da lista.",true)}
+    if(t%10===0)this.act=this.act.filter(id=>this.st[id]!==3);
+    this.ag.forEach((a,i)=>{
+      if(a.st==="talk"&&t>=a.until){const id=a.lead;this.st[id]=3;
+        if(this.rec){if(a.sale){this.out.sale++;this.cs[EC[id]].sale++;this.log("g",`${nome(id)} comprou · agente ${i+1}`)}else{this.out.talk++;this.log("",`${nome(id)} conversou e não comprou · agente ${i+1}`)}}
+        this.trail(id,a.sale?"g":"",a.sale?`Comprou com o agente ${i+1}. Saiu da lista.`:"Conversou e não comprou. Saiu da lista.",true);
+        a.st=a.on?"free":"off";a.ended=t;a.lastSale=a.sale}
+      if(!a.on&&a.st==="free")a.st="off";
+    });
+    for(let i=this.ring.length-1;i>=0;i--){const c=this.ring[i];if(c.end>t)continue;this.ring.splice(i,1);const id=c.id;
+      if(c.yes){let a=this.ag[c.ag];let ai=c.ag;
+        if(!(a.on&&a.st==="free")){ai=this.ag.findIndex(x=>x.on&&x.st==="free");a=this.ag[ai]}
+        if(!a){if(this.rec){this.out.lost++;this.log("r",`${nome(id)} atendeu e não tinha agente livre`)}
+          this.back(id);this.trail(id,"r",`Atendeu, mas não tinha agente livre. Volta para a lista.`);continue}
+        const sale=this.r()<c.ps;a.st="talk";a.lead=id;a.sale=sale;a.start=t;a.k=c.k;a.until=t+(sale?TALK_SALE:TALK_NO)*(0.7+0.6*this.r())+WRAP;
+        this.st[id]=2;this.k[id]++;
+        this.log("g",`${nome(id)} atendeu na ${c.k+1}ª ligação → agente ${ai+1}`);this.trail(id,"g",`Atendeu na ${c.k+1}ª ligação → agente ${ai+1}`);
+      }else{this.back(id);this.trail(id,"n",mark[EC[id]]===2?"Não atendeu. Empresa Ruim: não religa.":`Não atendeu. Religar entre ${hms(this.ready[id])} e ${hms(this.t+RE_MAX)}`)}
+    }
+    if(this.rec)this.ag.forEach((a,i)=>{
+      if(!a.on||a.st!=="free")return;
+      if(this.ring.some(c=>c.ag===i))return;
+      for(let j=0;j<this.per;j++){const id=this.pick();if(id<0)break;
+        const age=t-ARR[id],b=bucket(age),k=this.k[id],c=kc(k),pa=ANS[b][c],ps=SALE[b][c]*EMP[EC[id]].f/1000/pa,yes=this.r()<pa;
+        if(k===0){this.fSum+=age;this.fN++}else{this.reN++;if(t-this.last[id]<=RE_MAX)this.reIn++}
+        this.cs[EC[id]].lig++;this.st[id]=1;this.ring.push({id,ag:i,start:t,end:t+(yes?RING_YES:Math.round(RING_NO*(0.7+0.6*this.r()))),yes,ps,k,age});
+        this.trail(id,"",`${k+1}ª ligação, pelo agente ${i+1} (${Math.floor(age/60)} min de abandono)`)}
+    });
+    this.t++;
+  }
+  runTo(T){while(this.t<T)this.step()}
+}
+
+const $=id=>document.getElementById(id);
+const fmt=(n,d=0)=>n.toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d});
+const p2=n=>String(n).padStart(2,"0");
+const hhmm=s=>`${p2(Math.floor(s/3600)%24)}:${p2(Math.floor(s%3600/60))}`;
+const hms=s=>`${hhmm(s)}:${p2(s%60)}`;
+const mmss=s=>`${Math.floor(s/60)}:${p2(Math.floor(s%60))}`;
+const nome=id=>`Lead das ${hms(ARR[id])} (${curto(EMP[EC[id]].n)})`;
+const xpos=a=>a<W0?a/W0*6:a<W1?6+(a-W0)/(W1-W0)*46:a<W2?52+(a-W1)/(W2-W1)*22:74+Math.min(1,(a-W2)/(W3-W2))*26;
+
+let sim=null,per=3,speed=5,playing=false,lastTs=0,acc=0,startT=0;
+for(let h=0;h<24;h++){const o=document.createElement("option");o.value=h;o.textContent=`${p2(h)}h`;$("hour").appendChild(o)}
+$("hour").value=10;
+for(let n=1;n<=5;n++){const b=document.createElement("button");b.type="button";b.className="sq";b.textContent=n;b.dataset.p=n;b.setAttribute("aria-pressed",n===per);$("perSeg").appendChild(b)}
+$("axis").innerHTML=[[0,"0"],[60,"1"],[300,"5"],[600,"10"],[900,"15"],[1200,"20"],[1500,"25"],[2100,"35"],[2400,"40"],[3000,"50"],[3600,"1h"],[4200,"1h10"],[4800,"1h20"],[5400,"1h30"]].map(([a,l])=>`<span style="left:${xpos(a)}%">${l}</span>`).join("");
+
+const empRows=EMP.map((e,i)=>{const tr=document.createElement("tr");
+  tr.innerHTML=`<td>${e.n}</td><td><span class="seg" role="group" aria-label="Marca de ${e.n}">${["Normal","Preferência","Ruim"].map((l,m)=>`<button type="button" data-e="${i}" data-m="${m}" aria-pressed="${m===0}">${l}</button>`).join("")}</span></td><td></td><td></td><td></td><td></td>`;
+  $("empBody").appendChild(tr);const c=tr.children;return{tr,leads:c[2],lig:c[3],sale:c[4],never:c[5]}});
+function setMark(i,m){if(mark[i]===m)return;mark[i]=m;empRows[i].tr.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.m===m));
+  if(sim)sim.log(m===2?"r":"g",`${curto(EMP[i].n)} marcada como ${["Normal","Preferência","Ruim"][m]}`)}
+$("empBody").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;setMark(+b.dataset.e,+b.dataset.m);render()});
+$("clearMarks").addEventListener("click",()=>{EMP.forEach((_,i)=>setMark(i,0));render()});
+const dots=new Map();
+function stateOf(id,t){const s=sim.st[id];if(s===1)return"ring";if(s===2)return"talk";if(t-ARR[id]<W0)return"wait";return t<sim.ready[id]?"cool":sim.k[id]?"re":"ready"}
+function whereNow(t){const w=sim.w;if(w<0)return"";if(sim.wEnd)return sim.wEnd;
+  const s=stateOf(w,t),age=t-ARR[w];
+  if(s==="wait")return`Abandonou há ${age} s · entra na lista com 1 min`;
+  if(s==="ring"){const c=sim.ring.find(c=>c.id===w);return`Tocando agora (${c.k+1}ª ligação, agente ${c.ag+1})`}
+  if(s==="talk"){const i=sim.ag.findIndex(a=>a.st==="talk"&&a.lead===w);return`Falando com o agente ${i+1}`}
+  const faixa=age<W1?"1º, 1 a 25 min":age<W2?"2º, 25 a 50 min":"3º, 50 min a 1h30";
+  if(s==="cool")return`Não atendeu · pode religar em ${mmss(sim.ready[w]-t)} · faixa ${faixa}`;
+  if(sim.k[w]&&mark[EC[w]]===2)return`Empresa Ruim: não religa · faixa ${faixa}`;
+  if(sim.k[w])return`Pronto para religar · esperando há ${mmss(t-sim.last[w])} · lead novo passa na frente · faixa ${faixa}`;
+  return`Na lista, pronto para ligar · faixa ${faixa} · ${mmss(W3-age)} até sair`}
+function render(){
+  if(!sim)return;const t=sim.t;
+  $("clock").firstChild.nodeValue=hhmm(t);
+  const seen=new Set(),zc=[0,[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]];
+  for(const id of sim.act){if(sim.st[id]===3)continue;seen.add(id);const age=t-ARR[id],s=stateOf(id,t);
+    let el=dots.get(id);if(!el){el=document.createElement("div");el.dataset.id=id;el.style.top=`${8+(id%10)*16}px`;$("belt").appendChild(el);dots.set(id,el)}
+    el.className=`dot s-${s}${mark[EC[id]]===1?" p":mark[EC[id]]===2?" b":""}${id===sim.w?" f":""}`;el.style.left=`${xpos(age)}%`;el.title=nome(id);
+    if(age<W0)zc[0]++;else{const z=age<W1?zc[1]:age<W2?zc[2]:zc[3];z[{ready:0,re:4,ring:1,cool:2,talk:3}[s]]++}}
+  for(const [id,el] of dots)if(!seen.has(id)){el.remove();dots.delete(id)}
+  $("beltCount").textContent=`${fmt(seen.size)} leads na lista`;
+  $("zc0").textContent=`${zc[0]} esperando`;
+  const zt=z=>`${z[0]} novos · ${z[4]} prontos p/ religar · ${z[1]} tocando · ${z[2]} aguardando 2 min · ${z[3]} falando`;
+  $("zc1").textContent=zt(zc[1]);$("zc2").textContent=zt(zc[2]);$("zc3").textContent=zt(zc[3]);
+  let h="",talking=0,dialing=0,idle=0;
+  sim.ag.forEach((a,i)=>{const own=sim.ring.filter(c=>c.ag===i);
+    const calls=own.map(c=>`<div class="call${c.id===sim.w?" f":""}" data-id="${c.id}"><span>${curto(EMP[EC[c.id]].n)} · ${c.k+1}ª lig.</span><span class="tm">${t-c.start} s</span></div>`).join("");
+    let cls="",st;
+    if(a.st==="talk"){talking++;cls="talk";const wrap=a.until-t<WRAP;st=`${wrap?"Marcando resultado de":"Falando com"} ${curto(EMP[EC[a.lead]].n)} · ${mmss(t-a.start)}`}
+    else if(a.st==="off"){cls="off";st="Saiu da campanha"}
+    else if(own.length){dialing++;cls="dial";st=`Discando ${own.length} ${own.length>1?"leads":"lead"}`}
+    else{idle++;st="Sem lead para ligar agora"}
+    const sold=a.st!=="talk"&&a.lastSale&&t-a.ended<8;
+    h+=`<div class="ag ${cls}${sold?" sold":""}${a.st==="talk"&&a.lead===sim.w?" f":""}"${a.st==="talk"?` data-id="${a.lead}"`:""}><div class="who"><span>Agente ${i+1}</span>${sold?'<span style="color:var(--accent)">Vendeu!</span>':""}</div><span class="st">${st}</span>${a.st==="talk"&&own.length?'<span class="small">ainda tocando da leva dele:</span>':""}${calls}</div>`});
+  $("agents").innerHTML=h;$("agCount").textContent=`${talking} falando · ${dialing} discando · ${idle} sem lead`;
+  const o=sim.out;$("oSale").textContent=fmt(o.sale);$("oTalk").textContent=fmt(o.talk);$("oOld").textContent=fmt(o.old);$("oNever").textContent=fmt(o.never);$("oLost").textContent=fmt(o.lost);
+  $("oFirst").textContent=sim.fN?mmss(sim.fSum/sim.fN):"–";$("oRe").textContent=sim.reN?fmt(sim.reIn/sim.reN*100)+"%":"–";
+  $("since").textContent=`desde as ${hhmm(startT)}`;
+  const grupos=[0,0,0].map(()=>({leads:0,lig:0,sale:0,never:0}));
+  sim.cs.forEach((c,i)=>{const r=empRows[i];r.leads.textContent=fmt(c.leads);r.lig.textContent=fmt(c.lig);r.sale.textContent=fmt(c.sale);r.never.textContent=fmt(c.never);
+    const g=grupos[mark[i]];g.leads+=c.leads;g.lig+=c.lig;g.sale+=c.sale;g.never+=c.never});
+  $("empSum").textContent=["Normal","Preferência","Ruim"].map((nm,i)=>[nm,grupos[i],mark.includes(i)]).filter(x=>x[2]).map(([nm,g])=>`${nm}: ${fmt(g.leads)} leads, ${fmt(g.lig)} ligações, ${fmt(g.sale)} compraram`).join(" · ");
+  $("log").innerHTML=sim.ev.map(([tt,c,x])=>`<div><time>${hms(tt)}</time><span class="${c}">${x}</span></div>`).join("")||'<div class="small">Aperte Rodar.</div>';
+  if(sim.w<0){$("fName").textContent="Seguindo o próximo lead que entrar";$("fNow").textContent="";$("fTrail").innerHTML='<span class="small">Aperte Rodar. O próximo lead que abandonar o carrinho aparece aqui, do começo ao fim.</span>'}
+  else{$("fName").textContent=`Seguindo: ${nome(sim.w)}`;$("fNow").textContent="Agora: "+whereNow(t);
+    $("fTrail").innerHTML=sim.wh.slice(-14).map(([tt,c,x])=>`<div class="step ${c}"><time>${hms(tt)}</time><span>${x}</span></div>`).join("")}
+}
+function follow(id){if(!sim||id===sim.w)return;sim.w=id;sim.wNext=false;sim.wEnd=null;
+  sim.wh=[[ARR[id],"","Abandonou o carrinho."]];if(sim.k[id])sim.wh.push([sim.t,"n",`Começou a seguir aqui · já tinha ${sim.k[id]} ${sim.k[id]>1?"ligações":"ligação"}`]);render()}
+document.addEventListener("click",e=>{const el=e.target.closest("[data-id]");if(el)follow(+el.dataset.id)});
+$("fNext").addEventListener("click",()=>{if(!sim)return;sim.w=-1;sim.wNext=true;sim.wh=[];sim.wEnd=null;render()});
+function setup(){
+  setPlaying(false);startT=+$("hour").value*3600;
+  sim=new Sim(+$("agVal").textContent,per,77);
+  sim.runTo(Math.max(0,startT-W3));sim.rec=true;sim.runTo(startT);sim.ev=[];sim.wh=[];sim.cs=novaConta();sim.out={sale:0,talk:0,old:0,never:0,lost:0};sim.reN=sim.reIn=0;
+  sim.start();sim.wNext=true;sim.log("g",`${sim.nAg} agentes deram Play`);
+  document.querySelectorAll(".perTxt").forEach(x=>x.textContent=per);
+  for(const el of dots.values())el.remove();dots.clear();render();
+}
+function setPlaying(p){playing=p;$("play").textContent=p?"❚❚ Pausar":"▶ Rodar";if(p){lastTs=0;requestAnimationFrame(loop)}}
+let lastRender=0;
+function loop(ts){if(!playing)return;if(lastTs){acc+=(ts-lastTs)/1000*speed;let n=Math.floor(acc);acc-=n;n=Math.min(n,600);while(n-->0&&sim.t<DAY)sim.step()}lastTs=ts;
+  if(ts-lastRender>(speed>20?120:200)){render();lastRender=ts}
+  if(sim.t>=DAY){setPlaying(false);render();return}requestAnimationFrame(loop)}
+document.querySelector(".devlink").addEventListener("click",e=>{e.preventDefault();$("dev").scrollIntoView({behavior:"smooth"})});
+$("play").addEventListener("click",()=>setPlaying(!playing));
+$("hour").addEventListener("change",setup);
+$("perSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;per=+b.dataset.p;$("perSeg").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));setup()});
+function setAg(d){const n=Math.min(30,Math.max(1,+$("agVal").textContent+d));if(n===+$("agVal").textContent)return;$("agVal").textContent=n;
+  if(sim&&sim.t>startT){if(d>0){sim.addAgent();sim.log("g",`Agente ${sim.ag.filter(a=>a.on).length} deu Play`)}else{sim.removeAgent();sim.log("","Um agente saiu da campanha")}sim.nAg=n;render()}else setup()}
+$("agPlus").addEventListener("click",()=>setAg(1));$("agMinus").addEventListener("click",()=>setAg(-1));
+$("speeds").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;speed=+b.dataset.s;$("speeds").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+setup();
+</script>
+
+</body>
+</html>
